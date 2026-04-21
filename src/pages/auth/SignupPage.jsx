@@ -114,9 +114,11 @@ export default function SignupPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            <p className={`text-xs mt-2 ${strength.color}`}>
-              Strength: {strength.label}
-            </p>
+            {password && (
+              <p className={`text-xs mt-2 ${strength.color}`}>
+                Strength: {strength.label}
+              </p>
+            )}
           </div>
           <Input
             label="Confirm Password"

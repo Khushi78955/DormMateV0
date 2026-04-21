@@ -2,12 +2,24 @@ import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
+import Spinner from "../../components/ui/Spinner";
 import CreateRoomStep from "./CreateRoomStep";
 import JoinRoomStep from "./JoinRoomStep";
 
 export default function OnboardingPage() {
-  const { profile } = useAuth();
+  const { profile, loading } = useAuth();
   const [view, setView] = useState("select"); // select | create | join
+
+  if (loading) {
+    return (
+      <div className="min-h-screen p-6 md:p-10 flex items-center justify-center">
+        <div className="text-center">
+          <Spinner size="lg" />
+          <p className="text-white/50 mt-4">Setting up your account...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-6 md:p-10 flex items-center justify-center">

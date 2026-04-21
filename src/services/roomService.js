@@ -9,7 +9,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { v4 as uuidv4 } from "uuid";
-import { db } from "./firebase";
+import { auth, db } from "./firebase";
 
 const FIRESTORE_WRITE_TIMEOUT_MS = 8000;
 const FIRESTORE_READ_TIMEOUT_MS = 5000;
@@ -86,6 +86,13 @@ export const createRoom = async (creatorUid, creatorName, roomName) => {
 
 export const joinRoom = async (joinCode, uid, displayName) => {
   const upperCode = joinCode.toUpperCase();
+  const authedUid = auth.currentUser?.uid;
+  if (!authedUid) throw new Error("You must be signed in to join a room.");
+  if (uid && uid !== authedUid) {
+    console.warn(
+      "[joinRoom] Provided uid does not match auth.currentUser.uid; using authenticated uid."
+    );
+  }
 
   // Join is intentionally implemented without querying rooms by joinCode,
   // because most secure rulesets block non-members from listing rooms.
@@ -108,7 +115,8 @@ export const joinRoom = async (joinCode, uid, displayName) => {
   // This works with strict rules that allow a non-member to add themselves.
   try {
     await updateDoc(roomRef, {
-      memberIds: arrayUnion(uid),
+      memberIds: arrayUnion(authedUid),
+      updatedAt: serverTimestamp(),
     });
   } catch (err) {
     console.warn("[joinRoom] Failed to self-join (memberIds update):", err?.message);
@@ -119,11 +127,12 @@ export const joinRoom = async (joinCode, uid, displayName) => {
   try {
     await updateDoc(roomRef, {
       members: arrayUnion({
-        uid,
+        uid: authedUid,
         displayName,
         role: "member",
         joinedAt: Timestamp.now(),
       }),
+      updatedAt: serverTimestamp(),
     });
   } catch (err) {
     console.warn("[joinRoom] Joined memberIds, but failed to add members entry:", err?.message);

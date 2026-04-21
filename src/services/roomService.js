@@ -3,13 +3,10 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs,
-  query,
   serverTimestamp,
   Timestamp,
   setDoc,
   updateDoc,
-  where,
 } from "firebase/firestore";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "./firebase";
@@ -89,63 +86,51 @@ export const createRoom = async (creatorUid, creatorName, roomName) => {
 
 export const joinRoom = async (joinCode, uid, displayName) => {
   const upperCode = joinCode.toUpperCase();
-  let lastError = null;
 
-  // Try joinCodes collection lookup first
-  try {
-    console.log("[joinRoom] Attempting joinCodes lookup for:", upperCode);
-    const codeRef = doc(db, "joinCodes", upperCode);
-    const codeSnap = await getDoc(codeRef);
-    if (codeSnap.exists()) {
-      console.log("[joinRoom] joinCode found, room ID:", codeSnap.data().roomId);
-      const { roomId } = codeSnap.data();
-      const roomRef = doc(db, "rooms", roomId);
-      await updateDoc(roomRef, {
-        memberIds: arrayUnion(uid),
-        members: arrayUnion({
-          uid,
-          displayName,
-          role: "member",
-          joinedAt: Timestamp.now(),
-        }),
-      });
-      return roomId;
-    }
-    console.log("[joinRoom] joinCode document not found, proceeding to fallback");
-  } catch (err) {
-    lastError = err;
-    console.warn("[joinRoom] joinCodes lookup failed:", err?.message);
+  // Join is intentionally implemented without querying rooms by joinCode,
+  // because most secure rulesets block non-members from listing rooms.
+  console.log("[joinRoom] Attempting joinCodes lookup for:", upperCode);
+  const codeRef = doc(db, "joinCodes", upperCode);
+  const codeSnap = await getDoc(codeRef);
+  if (!codeSnap.exists()) {
+    throw new Error("Invalid room code. Please check and try again.");
   }
 
-  // Fallback: query rooms by joinCode field
-  try {
-    console.log("[joinRoom] Attempting room query fallback for:", upperCode);
-    const q = query(
-      collection(db, "rooms"),
-      where("joinCode", "==", upperCode)
-    );
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      console.log("[joinRoom] Room found via query, joining");
-      const roomDoc = snap.docs[0];
-      await updateDoc(roomDoc.ref, {
-        memberIds: arrayUnion(uid),
-        members: arrayUnion({
-          uid,
-          displayName,
-          role: "member",
-          joinedAt: Timestamp.now(),
-        }),
-      });
-      return roomDoc.id;
-    }
-    console.log("[joinRoom] No room found with joinCode:", upperCode);
-  } catch (err) {
-    console.warn("[joinRoom] Room query fallback failed:", err?.message);
-    lastError = err;
+  const { roomId } = codeSnap.data() || {};
+  if (!roomId) {
+    throw new Error("Invalid room code. Please check and try again.");
   }
 
-  throw new Error("Invalid room code. Please check and try again.");
+  console.log("[joinRoom] joinCode found, room ID:", roomId);
+  const roomRef = doc(db, "rooms", roomId);
+
+  // Step 1: self-join by only adding uid to memberIds.
+  // This works with strict rules that allow a non-member to add themselves.
+  try {
+    await updateDoc(roomRef, {
+      memberIds: arrayUnion(uid),
+    });
+  } catch (err) {
+    console.warn("[joinRoom] Failed to self-join (memberIds update):", err?.message);
+    throw err;
+  }
+
+  // Step 2: now that the user is a member, add the richer member record.
+  try {
+    await updateDoc(roomRef, {
+      members: arrayUnion({
+        uid,
+        displayName,
+        role: "member",
+        joinedAt: Timestamp.now(),
+      }),
+    });
+  } catch (err) {
+    console.warn("[joinRoom] Joined memberIds, but failed to add members entry:", err?.message);
+    throw err;
+  }
+
+  return roomId;
 };
 
 export const getRoomData = async (roomId) => {

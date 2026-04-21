@@ -39,7 +39,15 @@ export default function JoinRoomStep() {
       toast.success("Joined room!");
       navigate("/");
     } catch (err) {
-      setError(err?.message || "Invalid room code.");
+      const msg = err?.message || "Invalid room code.";
+      const isPermission =
+        err?.code === "permission-denied" ||
+        /insufficient permissions|permission/i.test(msg);
+      setError(
+        isPermission
+          ? "Room code is valid, but join was blocked by Firebase permissions. Publish the latest Firestore rules and ensure your deployed domain is added in Firebase Auth → Authorized domains."
+          : msg
+      );
     } finally {
       setLoading(false);
     }

@@ -43,4 +43,5 @@ Students living in shared spaces face daily friction — expense disputes, misse
 5. Apply security rules from `/firebase.rules`
 
 ## 🌐 Live Demo
-[https://dormmate.vercel.app](https://dormmate.vercel.app)
+Live deployment is not available at the moment. Please run the app locally using the instructions above.
+git a

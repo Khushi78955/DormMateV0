@@ -1,0 +1,1 @@
+import{C as e,_ as t,l as n,m as r,w as i}from"./Spinner-DTROG6Wt.js";var a=(e,r,a)=>t(i(n,`rooms`,e,`attendance`,r),{status:a,updatedAt:new Date},{merge:!0}),o=(t,i)=>r(e(n,`rooms`,t,`attendance`),e=>{let t={};e.docs.forEach(e=>t[e.id]=e.data()),i(t)});export{a as n,o as t};

@@ -15,6 +15,19 @@ import { v4 as uuidv4 } from "uuid";
 import { db } from "./firebase";
 
 const FIRESTORE_WRITE_TIMEOUT_MS = 8000;
+const FIRESTORE_READ_TIMEOUT_MS = 5000;
+
+const withReadTimeout = (promise, label) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`${label} timed out (${FIRESTORE_READ_TIMEOUT_MS}ms)`)),
+        FIRESTORE_READ_TIMEOUT_MS
+      )
+    ),
+  ]);
+};
 
 async function settleFirestoreWrite(promise, label) {
   let timeoutId;
@@ -40,7 +53,10 @@ export const createRoom = async (creatorUid, creatorName, roomName) => {
   const roomId = uuidv4().slice(0, 8).toUpperCase();
   const joinCode = uuidv4().slice(0, 6).toUpperCase();
 
-  const writePromise = setDoc(doc(db, "rooms", roomId), {
+  const roomRef = doc(db, "rooms", roomId);
+  const joinCodeRef = doc(db, "joinCodes", joinCode);
+
+  const roomWrite = setDoc(roomRef, {
     roomId,
     joinCode,
     roomName,
@@ -59,7 +75,12 @@ export const createRoom = async (creatorUid, creatorName, roomName) => {
     houseRules: ["Keep noise low after 11pm", "Clean shared spaces"],
   });
 
-  // Avoid hanging forever in offline/slow networks. Still surface real errors.
+  const joinCodeWrite = setDoc(joinCodeRef, {
+    roomId,
+    createdAt: serverTimestamp(),
+  });
+
+  const writePromise = Promise.all([roomWrite, joinCodeWrite]);
   writePromise.catch((err) => console.error("createRoom failed:", err));
   const didComplete = await settleFirestoreWrite(writePromise, "createRoom write");
 
@@ -67,30 +88,64 @@ export const createRoom = async (creatorUid, creatorName, roomName) => {
 };
 
 export const joinRoom = async (joinCode, uid, displayName) => {
-  const q = query(
-    collection(db, "rooms"),
-    where("joinCode", "==", joinCode.toUpperCase())
-  );
-  const snap = await getDocs(q);
-  if (snap.empty)
-    throw new Error("Invalid room code. Please check and try again.");
+  const upperCode = joinCode.toUpperCase();
+  let lastError = null;
 
-  const roomDoc = snap.docs[0];
-  const roomData = roomDoc.data();
-  if (roomData.memberIds.includes(uid))
-    throw new Error("You are already in this room.");
+  // Try joinCodes collection lookup first
+  try {
+    console.log("[joinRoom] Attempting joinCodes lookup for:", upperCode);
+    const codeRef = doc(db, "joinCodes", upperCode);
+    const codeSnap = await getDoc(codeRef);
+    if (codeSnap.exists()) {
+      console.log("[joinRoom] joinCode found, room ID:", codeSnap.data().roomId);
+      const { roomId } = codeSnap.data();
+      const roomRef = doc(db, "rooms", roomId);
+      await updateDoc(roomRef, {
+        memberIds: arrayUnion(uid),
+        members: arrayUnion({
+          uid,
+          displayName,
+          role: "member",
+          joinedAt: Timestamp.now(),
+        }),
+      });
+      return roomId;
+    }
+    console.log("[joinRoom] joinCode document not found, proceeding to fallback");
+  } catch (err) {
+    lastError = err;
+    console.warn("[joinRoom] joinCodes lookup failed:", err?.message);
+  }
 
-  await updateDoc(roomDoc.ref, {
-    memberIds: arrayUnion(uid),
-    members: arrayUnion({
-      uid,
-      displayName,
-      role: "member",
-      joinedAt: Timestamp.now(),
-    }),
-  });
+  // Fallback: query rooms by joinCode field
+  try {
+    console.log("[joinRoom] Attempting room query fallback for:", upperCode);
+    const q = query(
+      collection(db, "rooms"),
+      where("joinCode", "==", upperCode)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      console.log("[joinRoom] Room found via query, joining");
+      const roomDoc = snap.docs[0];
+      await updateDoc(roomDoc.ref, {
+        memberIds: arrayUnion(uid),
+        members: arrayUnion({
+          uid,
+          displayName,
+          role: "member",
+          joinedAt: Timestamp.now(),
+        }),
+      });
+      return roomDoc.id;
+    }
+    console.log("[joinRoom] No room found with joinCode:", upperCode);
+  } catch (err) {
+    console.warn("[joinRoom] Room query fallback failed:", err?.message);
+    lastError = err;
+  }
 
-  return roomData.roomId;
+  throw new Error("Invalid room code. Please check and try again.");
 };
 
 export const getRoomData = async (roomId) => {

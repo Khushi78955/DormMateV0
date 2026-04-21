@@ -1,7 +1,12 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../services/firebase";
-import { getUserProfile } from "../services/authService";
+import {
+  cacheUserProfile,
+  clearCachedUserProfile,
+  getCachedUserProfile,
+  getUserProfile,
+} from "../services/authService";
 
 const AuthContext = createContext(null);
 
@@ -12,20 +17,37 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true);
       setUser(firebaseUser);
+      if (!firebaseUser) {
+        setProfile(null);
+        clearCachedUserProfile();
+        setLoading(false);
+        return;
+      }
+
+      const cachedProfile = getCachedUserProfile(firebaseUser.uid);
+      if (cachedProfile) {
+        setProfile(cachedProfile);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+
       try {
-        if (firebaseUser) {
-          const p = await getUserProfile(firebaseUser.uid);
+        const p = await getUserProfile(firebaseUser.uid);
+        if (p) {
           setProfile(p);
-        } else {
-          setProfile(null);
+          cacheUserProfile(p);
         }
       } catch (err) {
         console.error("Failed to load user profile:", err);
-        setProfile(null);
+        if (!cachedProfile) {
+          setProfile(null);
+        }
       } finally {
-        setLoading(false);
+        if (!cachedProfile) {
+          setLoading(false);
+        }
       }
     });
     return unsub;
@@ -36,6 +58,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const p = await getUserProfile(user.uid);
         setProfile(p);
+        cacheUserProfile(p);
       } catch (err) {
         console.error("Failed to refresh user profile:", err);
       }

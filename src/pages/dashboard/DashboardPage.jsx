@@ -29,34 +29,51 @@ export default function DashboardPage() {
   const [maintenance, setMaintenance] = useState([]);
   const [attendance, setAttendance] = useState({});
 
+  // Load expenses immediately (critical)
   useEffect(() => {
     if (!room?.id) return;
     const unsub = subscribeExpenses(room.id, setExpenses);
     return unsub;
   }, [room?.id]);
 
+  // Defer chores by 200ms
   useEffect(() => {
     if (!room?.id) return;
-    const unsub = subscribeChores(room.id, setChores);
-    return unsub;
+    const timer = setTimeout(() => {
+      const unsub = subscribeChores(room.id, setChores);
+      return unsub;
+    }, 200);
+    return () => clearTimeout(timer);
   }, [room?.id]);
 
+  // Defer shopping by 400ms
   useEffect(() => {
     if (!room?.id) return;
-    const unsub = subscribeShoppingList(room.id, setShoppingList);
-    return unsub;
+    const timer = setTimeout(() => {
+      const unsub = subscribeShoppingList(room.id, setShoppingList);
+      return unsub;
+    }, 400);
+    return () => clearTimeout(timer);
   }, [room?.id]);
 
+  // Defer maintenance by 600ms
   useEffect(() => {
     if (!room?.id) return;
-    const unsub = subscribeMaintenance(room.id, setMaintenance);
-    return unsub;
+    const timer = setTimeout(() => {
+      const unsub = subscribeMaintenance(room.id, setMaintenance);
+      return unsub;
+    }, 600);
+    return () => clearTimeout(timer);
   }, [room?.id]);
 
+  // Defer attendance by 800ms
   useEffect(() => {
     if (!room?.id) return;
-    const unsub = subscribeAttendance(room.id, setAttendance);
-    return unsub;
+    const timer = setTimeout(() => {
+      const unsub = subscribeAttendance(room.id, setAttendance);
+      return unsub;
+    }, 800);
+    return () => clearTimeout(timer);
   }, [room?.id]);
 
   const monthlyTotal = useMemo(() => {

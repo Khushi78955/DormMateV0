@@ -15,6 +15,52 @@ import {
 import { auth, db } from "./firebase";
 
 const FIRESTORE_WRITE_TIMEOUT_MS = 8000;
+const FIRESTORE_READ_TIMEOUT_MS = 5000;
+const PROFILE_CACHE_KEY = "dormmatee-user-profile";
+const PROFILE_CACHE_TTL_MS = 1000 * 60 * 15; // 15 minutes
+
+const withReadTimeout = (promise, label) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`${label} timed out (${FIRESTORE_READ_TIMEOUT_MS}ms)`)),
+        FIRESTORE_READ_TIMEOUT_MS
+      )
+    ),
+  ]);
+};
+
+const safeParseJSON = (value) => {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+export const getCachedUserProfile = (uid) => {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(PROFILE_CACHE_KEY);
+  if (!raw) return null;
+  const cached = safeParseJSON(raw);
+  if (!cached?.profile || cached.profile.uid !== uid) return null;
+  if (Date.now() - (cached.cachedAt || 0) > PROFILE_CACHE_TTL_MS) return null;
+  return cached.profile;
+};
+
+export const cacheUserProfile = (profile) => {
+  if (typeof window === "undefined" || !profile) return;
+  window.localStorage.setItem(
+    PROFILE_CACHE_KEY,
+    JSON.stringify({ profile, cachedAt: Date.now() })
+  );
+};
+
+export const clearCachedUserProfile = () => {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(PROFILE_CACHE_KEY);
+};
 
 async function settleFirestoreWrite(promise, label) {
   let timeoutId;
@@ -57,22 +103,18 @@ export const logoutUser = () => signOut(auth);
 export const getUserProfile = async (uid) => {
   const ref = doc(db, "users", uid);
 
-  // Prefer cached data when offline/unavailable.
   try {
-    const cached = await getDocFromCache(ref);
+    const cached = await withReadTimeout(getDocFromCache(ref), "Cache lookup");
     if (cached.exists()) return cached.data();
   } catch {
-    // Cache miss is fine.
+    // Cache miss is fine
   }
 
   try {
-    const snap = await getDocFromServer(ref);
+    const snap = await withReadTimeout(getDocFromServer(ref), "Server fetch");
     return snap.exists() ? snap.data() : null;
   } catch (err) {
-    // When offline, avoid throwing here; caller can treat missing profile as null.
     if (err?.code === "unavailable") return null;
-
-    // Fallback to default behavior (may use cache depending on SDK state).
     const snap = await getDoc(ref);
     return snap.exists() ? snap.data() : null;
   }

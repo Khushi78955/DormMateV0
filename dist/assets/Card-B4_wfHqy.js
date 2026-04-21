@@ -1,0 +1,1 @@
+import{i as e}from"./Spinner-DTROG6Wt.js";import{n as t}from"./Button-B-Mkz_mR.js";var n=e();function r({children:e,className:r=``,glow:i=!1,onClick:a}){return(0,n.jsx)(`div`,{onClick:a,className:t(`glass-card p-5 transition-all duration-300`,i&&`hover:shadow-glow hover:border-primary-500/30`,a&&`cursor-pointer`,r),children:e})}export{r as t};

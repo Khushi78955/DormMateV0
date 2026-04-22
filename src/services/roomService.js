@@ -124,8 +124,8 @@ export const joinRoom = async (joinCode, uid, displayName) => {
   }
 
   // Step 2: now that the user is a member, add the richer member record.
-  try {
-    await updateDoc(roomRef, {
+  const addMemberEntry = async () =>
+    updateDoc(roomRef, {
       members: arrayUnion({
         uid: authedUid,
         displayName,
@@ -134,9 +134,25 @@ export const joinRoom = async (joinCode, uid, displayName) => {
       }),
       updatedAt: serverTimestamp(),
     });
+
+  try {
+    await addMemberEntry();
   } catch (err) {
-    console.warn("[joinRoom] Joined memberIds, but failed to add members entry:", err?.message);
-    throw err;
+    console.warn(
+      "[joinRoom] Joined memberIds, but failed to add members entry (will retry once):",
+      err?.message
+    );
+    // Best-effort: if Firestore hasn't observed the memberIds write yet,
+    // this can be denied by rules even though the user has effectively joined.
+    await new Promise((r) => setTimeout(r, 600));
+    try {
+      await addMemberEntry();
+    } catch (err2) {
+      console.warn(
+        "[joinRoom] Retry failed to add members entry (continuing anyway):",
+        err2?.message
+      );
+    }
   }
 
   return roomId;

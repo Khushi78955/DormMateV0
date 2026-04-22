@@ -15,7 +15,7 @@ service cloud.firestore {
             request.resource.data.diff(resource.data).changedKeys().hasOnly(["memberIds", "updatedAt"]) &&
             request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1 &&
             request.resource.data.memberIds.hasAll(resource.data.memberIds) &&
-            request.resource.data.memberIds.has(request.auth.uid) &&
+            request.resource.data.memberIds.hasAny([request.auth.uid]) &&
             (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp)
           )
         );
